@@ -32,7 +32,8 @@ select count(*) from cleanwords;
 -- note: only say with on first one, comma after each
 with overall as 
 (
-  select cast(count(*) as double) as N from cleanwords100k
+  -- select cast(count(*) as double) as N from cleanwords100k
+  select cast(count(*) as double) as N from cleanwords
 ),
 -- get all id*word pairs
 pairs as 
@@ -47,6 +48,21 @@ pairs as
   ) a 
   cross join unnest(wordarr) as t (word)
 ),
+-- C(w) for w = x or y
+singlecnt as 
+(   select word, cast(count(*) as double) as Cw
+    from pairs 
+    group by word
+    -- ignore the words in a single document
+    having count(*) > 1
+),
+-- only keep id*word pairs where word appears in more than 1 document
+filteredpairs as 
+(
+    select id, p.word
+    from pairs p 
+    join singlecnt sc on p.word = sc.word
+),
 -- count pairs of words in the same document, C_{xy}
 pairwisecnt as
 (
@@ -55,23 +71,17 @@ pairwisecnt as
     (
       select l.word as x, r.word as y
       from 
-      (select id, word from pairs) as l 
+      (select id, word from filteredpairs) as l 
       join 
-      (select id, word from pairs) as r on ((l.id = r.id) and (l.word != r.word))
+      (select id, word from filteredpairs) as r on ((l.id = r.id) and (l.word != r.word))
     ) b
     group by x, y
-),
--- C(w) for w = x or y
-singlecnt as 
-(   select word, cast(count(*) as double) as Cw
-    from pairs 
-    group by word
 ),
 -- get the single probability P(w)
 prob as 
 (   select word, Cw/N as Pw
     from singlecnt 
-    cross join overall 
+    cross join overall
 ),
 -- now compute P(x|y) terms
 conditional as 
